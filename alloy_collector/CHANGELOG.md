@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+## What's Changed
+* Read the host journal from an explicit path by @K-4U in https://github.com/K-4U/ha-addon-alloy/pull/2
+
+
+**Full Changelog**: https://github.com/K-4U/ha-addon-alloy/compare/v1.1.0...v1.2.0
+
 ## 1.1.0
 
 ## What's Changed
