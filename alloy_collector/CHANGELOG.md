@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+
+## What's Changed
+* log levels by @K-4U in https://github.com/K-4U/ha-addon-alloy/pull/4
+
+
+**Full Changelog**: https://github.com/K-4U/ha-addon-alloy/compare/v1.3.0...v1.4.0
+
 ## 1.3.0
 
 ## What's Changed
