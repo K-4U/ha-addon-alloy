@@ -37,9 +37,10 @@ push() { # push <labels json> <line>
 }
 push '{"container":"homeassistant","t":"1"}' $'\e[33m2026-10-11 00:26:24.334 WARNING (MainThread) [homeassistant.components.camera] Updating camera took longer\e[0m'
 push '{"container":"hassio_supervisor","t":"2"}' '2026-10-11 00:26:24.334 INFO (MainThread) [supervisor.api] something about an error'
-push '{"container":"addon_core_mosquitto","t":"3"}' '2026-10-11 00:26:24: New connection from 172.30.32.1'
-push '{"container":"addon_local_x","t":"4"}' '[00:26:24] ERROR: Something failed'
+push '{"container":"app_core_mosquitto","t":"3"}' '2026-10-11 00:26:24: New connection from 172.30.32.1'
+push '{"container":"app_local_x","t":"4"}' '[00:26:24] ERROR: Something failed'
 push '{"service":"systemd-journald","level":"notice","t":"5"}' 'Journal started'
+push '{"container":"app_b9845f46_govee2mqtt","t":"6"}' $'[2026-10-11T00:27:56 \e[32mINFO \e[0m govee::commands::serve] Querying API'
 
 failures=0
 expect() { # expect <t> <expected level, or "none">
@@ -61,5 +62,6 @@ expect 2 info    # INFO line that mentions "error"
 expect 3 none    # no level word: Loki detects it
 expect 4 error
 expect 5 notice  # not from a container: journal priority kept
+expect 6 info    # level word right after a colour code (govee2mqtt)
 
 exit $((failures > 0))

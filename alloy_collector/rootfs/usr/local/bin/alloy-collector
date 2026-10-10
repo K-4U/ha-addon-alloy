@@ -154,7 +154,7 @@ EOF
 loki.relabel "journal" {
   forward_to = []
 
-  rule { // container = homeassistant, hassio_supervisor, addon_core_mosquitto, ...
+  rule { // container = homeassistant, hassio_supervisor, app_core_mosquitto, ...
     source_labels = ["__journal_container_name"]
     target_label  = "container"
   }
@@ -167,9 +167,9 @@ loki.relabel "journal" {
     regex         = `(.+?)(\.service)?`
     target_label  = "service"
   }
-  rule { // ...or the container without its prefix (addon_core_mosquitto -> mosquitto, hassio_supervisor -> supervisor)
+  rule { // ...or the container without its prefix (app_core_mosquitto -> mosquitto, hassio_supervisor -> supervisor)
     source_labels = ["__journal_container_name"]
-    regex         = `(addon_[^_]+_|hassio_)?(.+)`
+    regex         = `(app_[^_]+_|hassio_)?(.+)`
     target_label  = "service"
     replacement   = "$2"
   }
@@ -190,7 +190,14 @@ loki.process "journal" {
   stage.match {
     selector = "{container=~\".+\"}"
 
+    // Search a copy without terminal colour codes ("\e[32mINFO" would hide the word);
+    // the line itself is sent unchanged
+    stage.template {
+      source   = "plain"
+      template = `{{ regexReplaceAll "\x1b\\[[0-9;]*m" .Entry "" }}`
+    }
     stage.regex {
+      source     = "plain"
       expression = `\b(?P<level>DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL)\b`
     }
     stage.template {

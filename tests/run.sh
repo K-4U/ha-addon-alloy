@@ -73,6 +73,15 @@ else
   fail "log levels"; echo "$output" | grep -v '^ok' | sed 's/^/      /'
 fi
 
+# Journal labels (container, service, level) through the rendered relabel rules (tests/relabel)
+if output="$(docker run --rm -e ALLOY_COLLECTOR_HOSTNAME=ci -e ALLOY_COLLECTOR_HOST_ACCESS=true \
+  -v "$(host_path "$tests/options/defaults.json"):/data/options.json:ro" \
+  -v "$(host_path "$tests"):/tests:ro" --entrypoint bash "$image" /tests/relabel/check.sh 2>&1)"; then
+  pass "journal labels"
+else
+  fail "journal labels"; echo "$output" | grep -v '^ok' | sed 's/^/      /'
+fi
+
 # Extra .alloy files: a valid one loads, an invalid one is reported (exit code 2)
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
