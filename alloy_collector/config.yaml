@@ -1,0 +1,60 @@
+# https://developers.home-assistant.io/docs/apps/configuration
+name: Alloy Collector
+version: "0.1.0"
+slug: alloy_collector
+description: Ships Home Assistant logs and metrics to Loki and Prometheus with Grafana Alloy
+url: "https://github.com/K-4U/ha-addon-alloy/tree/main/alloy_collector"
+arch:
+  - aarch64
+  - amd64
+image: "ghcr.io/k-4u/addon-alloy"
+startup: services
+
+# Real host network stats; the Alloy UI (ui_port) listens on the host directly
+host_network: true
+# Host processes and root filesystem (via /proc/1/root) for host metrics.
+# Only applied with protection mode off; without it the add-on falls back to the container's view.
+host_pid: true
+privileged:
+  - SYS_PTRACE
+# The default profile blocks reading /proc/1/root
+apparmor: false
+# Host journal, read-only
+journald: true
+# Hostname and per-container stats from the Supervisor
+hassio_api: true
+hassio_role: manager
+
+map:
+  - app_config:rw # extra .alloy files
+  - ssl # TLS certificates
+
+options:
+  collect_logs: true
+  collect_host_metrics: true
+  collect_container_metrics: true
+  scrape_interval: 60
+  log_level: info
+schema:
+  loki_url: url?
+  loki_username: str?
+  loki_password: password?
+  loki_ca_file: str?
+  loki_cert_file: str?
+  loki_key_file: str?
+  loki_insecure_skip_verify: bool?
+  prometheus_url: url?
+  prometheus_username: str?
+  prometheus_password: password?
+  prometheus_ca_file: str?
+  prometheus_cert_file: str?
+  prometheus_key_file: str?
+  prometheus_insecure_skip_verify: bool?
+  host: str?
+  owner: str?
+  collect_logs: bool
+  collect_host_metrics: bool
+  collect_container_metrics: bool
+  scrape_interval: int(10,3600)
+  log_level: list(debug|info|warn|error)
+  ui_port: port?

@@ -1,0 +1,5 @@
+// Example of an extra file: scrape a local exporter and send it through the add-on's writer
+prometheus.scrape "example" {
+  targets    = [{__address__ = "127.0.0.1:9100"}]
+  forward_to = [prometheus.remote_write.default.receiver]
+}

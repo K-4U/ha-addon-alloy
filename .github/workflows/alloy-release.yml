@@ -1,0 +1,92 @@
+name: Alloy release
+
+# When a merge to main changes the Alloy version in the Dockerfile (normally a Dependabot PR),
+# release a new add-on version automatically. The add-on version follows the size of the Alloy
+# update: Alloy patch -> add-on patch, minor -> minor, major -> major.
+on:
+  push:
+    branches: [main]
+    paths: [alloy_collector/Dockerfile]
+
+permissions:
+  contents: read
+
+# One at a time, so two quick Alloy updates don't compute the same add-on version
+concurrency:
+  group: alloy-release
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    name: Detect Alloy update
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      notes: ${{ steps.bump.outputs.notes }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Compute the add-on version
+        id: bump
+        run: |
+          alloy_version() {
+            git show "$1:alloy_collector/Dockerfile" 2>/dev/null |
+              sed -nE 's/^FROM grafana\/alloy:v([0-9]+\.[0-9]+\.[0-9]+)$/\1/p'
+          }
+          old="$(alloy_version HEAD^1)"
+          new="$(alloy_version HEAD)"
+          if [ -z "$old" ] || [ -z "$new" ] || [ "$old" = "$new" ]; then
+            echo "Alloy version unchanged (${old:-?} -> ${new:-?}); nothing to release"
+            exit 0
+          fi
+
+          # Read the add-on version from the latest main: an earlier release may have bumped it
+          # after this push.
+          current="$(git show origin/main:alloy_collector/config.yaml | sed -nE 's/^version: "?([0-9]+\.[0-9]+\.[0-9]+)"?.*/\1/p')"
+          IFS=. read -r old_major old_minor _ <<< "$old"
+          IFS=. read -r new_major new_minor _ <<< "$new"
+          IFS=. read -r major minor patch <<< "$current"
+          if [ "$new_major" != "$old_major" ]; then
+            version="$((major + 1)).0.0"
+          elif [ "$new_minor" != "$old_minor" ]; then
+            version="$major.$((minor + 1)).0"
+          else
+            version="$major.$minor.$((patch + 1))"
+          fi
+
+          echo "Alloy $old -> $new: add-on $current -> $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "notes=- Grafana Alloy updated from v$old to v$new ([release notes](https://github.com/grafana/alloy/releases/tag/v$new))." >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Release
+    needs: detect
+    if: needs.detect.outputs.version != ''
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ needs.detect.outputs.version }}
+      notes: ${{ needs.detect.outputs.notes }}
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+
+  github-release:
+    name: Create GitHub release
+    needs: [detect, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Created last, so a release only exists once its images are published. A release created
+      # with GITHUB_TOKEN doesn't trigger release.yml again.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.detect.outputs.version }}
+          NOTES: ${{ needs.detect.outputs.notes }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$BRANCH" --title "v$VERSION" --notes "$NOTES"

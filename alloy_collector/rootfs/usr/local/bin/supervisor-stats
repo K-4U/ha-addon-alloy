@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Polls the Supervisor for CPU, memory, network and disk stats of every Home Assistant
+# container (core, Supervisor, plugins and started add-ons), and writes them in
+# Prometheus text format for the unix exporter's textfile collector.
+#
+#   supervisor-stats <directory> <interval in seconds>
+set -uo pipefail
+
+dir="$1"
+interval="$2"
+
+api() {
+  curl -fsS --max-time 10 -H "Authorization: Bearer ${SUPERVISOR_TOKEN:-}" "http://supervisor$1" | jq -c '.data'
+}
+
+# Rows of {container, stats} -> Prometheus text format.
+# service = container name without its prefix, matching the journal logs.
+# shellcheck disable=SC2016 # a jq program, not shell
+to_prometheus='
+  def metrics: [
+    {name: "ha_container_cpu_percent", type: "gauge", help: "CPU usage in percent of one core", key: "cpu_percent"},
+    {name: "ha_container_memory_usage_bytes", type: "gauge", help: "Memory in use", key: "memory_usage"},
+    {name: "ha_container_memory_limit_bytes", type: "gauge", help: "Memory limit", key: "memory_limit"},
+    {name: "ha_container_memory_percent", type: "gauge", help: "Memory in use, in percent of the limit", key: "memory_percent"},
+    {name: "ha_container_network_receive_bytes_total", type: "counter", help: "Bytes received", key: "network_rx"},
+    {name: "ha_container_network_transmit_bytes_total", type: "counter", help: "Bytes sent", key: "network_tx"},
+    {name: "ha_container_disk_read_bytes_total", type: "counter", help: "Bytes read from disk", key: "blk_read"},
+    {name: "ha_container_disk_write_bytes_total", type: "counter", help: "Bytes written to disk", key: "blk_write"}
+  ];
+  . as $rows
+  | metrics[] as $m
+  | "# HELP \($m.name) \($m.help)",
+    "# TYPE \($m.name) \($m.type)",
+    ($rows[]
+      | select(.stats[$m.key] != null)
+      | (.container | sub("^(addon_[^_]+_|hassio_)"; "")) as $service
+      | "\($m.name){container=\"\(.container)\",service=\"\($service)\"} \(.stats[$m.key])")
+'
+
+while true; do
+  # endpoint path -> Docker container name
+  targets=(
+    "/core homeassistant"
+    "/supervisor hassio_supervisor"
+    "/dns hassio_dns"
+    "/audio hassio_audio"
+    "/cli hassio_cli"
+    "/multicast hassio_multicast"
+    "/observer hassio_observer"
+  )
+  while read -r slug; do
+    targets+=("/addons/$slug addon_$slug")
+  done < <(api /addons | jq -r '.addons[] | select(.state == null or .state == "started") | .slug' 2>/dev/null)
+
+  rows=()
+  for target in "${targets[@]}"; do
+    read -r path container <<<"$target"
+    if stats="$(api "$path/stats" 2>/dev/null)" && [[ -n "$stats" && "$stats" != null ]]; then
+      rows+=("$(jq -nc --arg c "$container" --argjson s "$stats" '{container: $c, stats: $s}')")
+    else
+      echo "[supervisor-stats] Could not read $path/stats" >&2
+    fi
+  done
+
+  # Write atomically, so the exporter never reads a half-written file
+  if printf '%s\n' "${rows[@]}" | jq -rs "$to_prometheus" >"$dir/.supervisor.prom.tmp"; then
+    mv "$dir/.supervisor.prom.tmp" "$dir/supervisor.prom"
+  fi
+  sleep "$interval"
+done

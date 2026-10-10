@@ -1,0 +1,67 @@
+configuration:
+  loki_url:
+    name: Loki URL
+    description: Loki push endpoint, e.g. http://10.42.1.2:3100/loki/api/v1/push. Leave empty to not send logs.
+  loki_username:
+    name: Loki username
+    description: Username for basic auth. Leave empty for no auth.
+  loki_password:
+    name: Loki password
+    description: Password for basic auth.
+  loki_ca_file:
+    name: Loki CA certificate
+    description: Path to a CA certificate to verify Loki's TLS certificate, e.g. /ssl/ca.pem.
+  loki_cert_file:
+    name: Loki client certificate
+    description: Path to a client certificate for mutual TLS, e.g. /ssl/client.pem.
+  loki_key_file:
+    name: Loki client key
+    description: Path to the client certificate's private key, e.g. /ssl/client-key.pem.
+  loki_insecure_skip_verify:
+    name: Loki skip TLS verification
+    description: Accept any TLS certificate from Loki. Only for testing.
+  prometheus_url:
+    name: Prometheus URL
+    description: Prometheus remote-write endpoint, e.g. http://10.42.1.2:9090/api/v1/write. Leave empty to not send metrics.
+  prometheus_username:
+    name: Prometheus username
+    description: Username for basic auth. Leave empty for no auth.
+  prometheus_password:
+    name: Prometheus password
+    description: Password for basic auth.
+  prometheus_ca_file:
+    name: Prometheus CA certificate
+    description: Path to a CA certificate to verify Prometheus' TLS certificate, e.g. /ssl/ca.pem.
+  prometheus_cert_file:
+    name: Prometheus client certificate
+    description: Path to a client certificate for mutual TLS, e.g. /ssl/client.pem.
+  prometheus_key_file:
+    name: Prometheus client key
+    description: Path to the client certificate's private key, e.g. /ssl/client-key.pem.
+  prometheus_insecure_skip_verify:
+    name: Prometheus skip TLS verification
+    description: Accept any TLS certificate from Prometheus. Only for testing.
+  host:
+    name: Host label
+    description: Value of the host label on all logs and metrics. Leave empty to use Home Assistant's hostname.
+  owner:
+    name: Owner label
+    description: Value of the owner label on all logs and metrics. Leave empty to leave the label out.
+  collect_logs:
+    name: Collect logs
+    description: Send the host journal (Home Assistant, Supervisor, every add-on and the OS) to Loki.
+  collect_host_metrics:
+    name: Collect host metrics
+    description: Send CPU, memory, disk and network metrics of the Home Assistant machine to Prometheus. Turn protection mode off for complete metrics.
+  collect_container_metrics:
+    name: Collect container metrics
+    description: Send CPU, memory, network and disk usage of Home Assistant, the Supervisor and every add-on to Prometheus.
+  scrape_interval:
+    name: Scrape interval
+    description: How often metrics are collected, in seconds.
+  log_level:
+    name: Log level
+    description: Alloy's own log level.
+  ui_port:
+    name: Alloy UI port
+    description: Port for Alloy's web UI on the Home Assistant host, for debugging. Leave empty to not expose it.

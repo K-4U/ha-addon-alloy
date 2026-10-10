@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+    inputs:
+      skip_build:
+        description: Skip the image build (the caller builds and publishes itself)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Add-on lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: frenck/action-addon-linter@v2.21
+        with:
+          path: ./alloy_collector
+
+  validate:
+    name: Config validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the image
+        run: docker build -t alloy-collector:ci alloy_collector
+      # Renders the Alloy config for every fixture in tests/options and runs `alloy validate`
+      # on it with the Alloy version from the Dockerfile. This is what catches an Alloy update
+      # that renamed or removed something the add-on uses.
+      - name: Validate the config
+        run: bash tests/run.sh alloy-collector:ci
+
+  build:
+    name: Build
+    if: ${{ !inputs.skip_build }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    uses: ./.github/workflows/build.yml
+    with:
+      publish: false

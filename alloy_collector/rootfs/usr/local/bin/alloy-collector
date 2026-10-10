@@ -1,0 +1,335 @@
+#!/usr/bin/env bash
+# Entrypoint of the Alloy Collector add-on.
+#
+#   alloy-collector run    render the Alloy config from the add-on options, start the
+#                          Supervisor stats poller and run Alloy (the default)
+#   alloy-collector check  render and validate the config, then exit (used by CI)
+#
+# Overrides for running outside Home Assistant (CI, local tests):
+#   OPTIONS_FILE                  add-on options (default /data/options.json)
+#   EXTRA_DIR                     folder with extra .alloy files (default /config)
+#   ALLOY_COLLECTOR_HOSTNAME      skip asking the Supervisor for the hostname
+#   ALLOY_COLLECTOR_HOST_ACCESS   true/false instead of detecting host_pid access
+set -euo pipefail
+
+OPTIONS_FILE="${OPTIONS_FILE:-/data/options.json}"
+EXTRA_DIR="${EXTRA_DIR:-/config}"
+RUN_DIR="/run/alloy-collector"
+CONFIG_DIR="$RUN_DIR/config"
+TEXTFILE_DIR="$RUN_DIR/textfile"
+STORAGE_DIR="/data/alloy"
+
+log() { echo "[alloy-collector] $*" >&2; }
+
+# Option value as a string; empty when the option is unset
+opt() {
+  jq -r --arg k "$1" 'if .[$k] == null then empty else .[$k] | tostring end' "$OPTIONS_FILE"
+}
+
+# Quote a value as an Alloy string literal
+str() { jq -rn --arg v "$1" '$v | tojson'; }
+
+supervisor() {
+  curl -fsS --max-time 10 -H "Authorization: Bearer ${SUPERVISOR_TOKEN:-}" "http://supervisor$1"
+}
+
+# True when the add-on runs in the host PID namespace (protection mode off):
+# PID 1 is then the host's systemd and its root filesystem is readable.
+host_access() {
+  if [[ -n "${ALLOY_COLLECTOR_HOST_ACCESS:-}" ]]; then
+    [[ "$ALLOY_COLLECTOR_HOST_ACCESS" == true ]]
+    return
+  fi
+  [[ "$(cat /proc/1/comm 2>/dev/null)" == systemd && -r /proc/1/root/etc/os-release ]]
+}
+
+resolve_host() {
+  local host
+  host="$(opt host)"
+  [[ -z "$host" ]] && host="${ALLOY_COLLECTOR_HOSTNAME:-}"
+  [[ -z "$host" ]] && host="$(supervisor /info 2>/dev/null | jq -r '.data.hostname // empty' || true)"
+  [[ -z "$host" ]] && host="$(hostname)"
+  echo "$host"
+}
+
+# ---------- Config sections ----------
+
+external_labels() {
+  echo "  external_labels = {"
+  echo "    host = $(str "$HOST"),"
+  if [[ -n "$OWNER" ]]; then
+    echo "    owner = $(str "$OWNER"),"
+  fi
+  echo "  }"
+}
+
+# endpoint { ... } for prefix "loki" or "prometheus", including basic auth and TLS
+endpoint() {
+  local p="$1" env_password user ca cert key skip
+  env_password="${p^^}_PASSWORD"
+  user="$(opt "${p}_username")"
+  ca="$(opt "${p}_ca_file")"
+  cert="$(opt "${p}_cert_file")"
+  key="$(opt "${p}_key_file")"
+  skip="$(opt "${p}_insecure_skip_verify")"
+
+  echo "  endpoint {"
+  echo "    url = $(str "$(opt "${p}_url")")"
+  if [[ -n "$user" ]]; then
+    # The password stays out of the rendered file; Alloy reads it from the environment
+    echo "    basic_auth {"
+    echo "      username = $(str "$user")"
+    echo "      password = sys.env($(str "$env_password"))"
+    echo "    }"
+  fi
+  if [[ -n "$ca$cert$key" || "$skip" == true ]]; then
+    echo "    tls_config {"
+    if [[ -n "$ca" ]]; then echo "      ca_file = $(str "$ca")"; fi
+    if [[ -n "$cert" ]]; then echo "      cert_file = $(str "$cert")"; fi
+    if [[ -n "$key" ]]; then echo "      key_file = $(str "$key")"; fi
+    if [[ "$skip" == true ]]; then echo "      insecure_skip_verify = true"; fi
+    echo "    }"
+  fi
+  echo "  }"
+}
+
+render_logging() {
+  cat <<EOF
+logging {
+  level = $(str "$(opt log_level)")
+}
+
+EOF
+}
+
+render_loki() {
+  cat <<'EOF'
+// ---------- Logs ----------
+
+// Logs -> Loki. Extra .alloy files can send to loki.write.default.receiver too.
+loki.write "default" {
+EOF
+  endpoint loki
+  external_labels
+  echo "}"
+  echo
+
+  if [[ "$(opt collect_logs)" != true ]]; then
+    return
+  fi
+  cat <<'EOF'
+// Journal labels: container = raw container name, service = the cleanest name available
+loki.relabel "journal" {
+  forward_to = []
+
+  rule { // container = homeassistant, hassio_supervisor, addon_core_mosquitto, ...
+    source_labels = ["__journal_container_name"]
+    target_label  = "container"
+  }
+  rule { // service = program name (kernel, systemd-journald, ...)
+    source_labels = ["__journal_syslog_identifier"]
+    target_label  = "service"
+  }
+  rule { // ...or the systemd unit without .service (docker.service -> docker)
+    source_labels = ["__journal__systemd_unit"]
+    regex         = `(.+?)(\.service)?`
+    target_label  = "service"
+  }
+  rule { // ...or the container without its prefix (addon_core_mosquitto -> mosquitto, hassio_supervisor -> supervisor)
+    source_labels = ["__journal_container_name"]
+    regex         = `(addon_[^_]+_|hassio_)?(.+)`
+    target_label  = "service"
+    replacement   = "$2"
+  }
+  rule { // level = emerg, alert, crit, error, warning, notice, info, debug
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+}
+
+// Host journal: HA core, Supervisor, every add-on and the OS
+loki.source.journal "journal" {
+  max_age       = "12h"
+  relabel_rules = loki.relabel.journal.rules
+  forward_to    = [loki.write.default.receiver]
+  labels        = {job = "systemd-journal"}
+}
+
+EOF
+}
+
+render_prometheus() {
+  local host_metrics container_metrics
+  host_metrics="$(opt collect_host_metrics)"
+  container_metrics="$(opt collect_container_metrics)"
+
+  cat <<'EOF'
+// ---------- Metrics ----------
+
+// Metrics -> Prometheus. Extra .alloy files can send to prometheus.remote_write.default.receiver too.
+prometheus.remote_write "default" {
+EOF
+  endpoint prometheus
+  external_labels
+  echo "}"
+  echo
+
+  if [[ "$host_metrics" != true && "$container_metrics" != true ]]; then
+    return
+  fi
+
+  echo "// Host metrics (node_*) and, via the textfile collector, per-container stats (ha_container_*)"
+  echo 'prometheus.exporter.unix "host" {'
+  if [[ "$host_metrics" == true ]] && host_access; then
+    echo '  rootfs_path = "/proc/1/root" // the host root filesystem, so every host mount is visible'
+  fi
+  if [[ "$host_metrics" != true ]]; then
+    echo '  set_collectors = ["textfile"] // container stats only'
+  fi
+  if [[ "$container_metrics" == true ]]; then
+    echo "  textfile {"
+    echo "    directory = $(str "$TEXTFILE_DIR") // written by supervisor-stats"
+    echo "  }"
+  fi
+  echo "}"
+  echo
+
+  cat <<EOF
+prometheus.scrape "host" {
+  targets         = prometheus.exporter.unix.host.targets
+  scrape_interval = $(str "$(opt scrape_interval)s")
+  forward_to      = [prometheus.relabel.instance.receiver]
+}
+
+// instance = the host name instead of Alloy's own address
+prometheus.relabel "instance" {
+  forward_to = [prometheus.remote_write.default.receiver]
+
+  rule {
+    target_label = "instance"
+    replacement  = $(str "$HOST")
+  }
+}
+
+EOF
+}
+
+render() {
+  HOST="$(resolve_host)"
+  OWNER="$(opt owner)"
+
+  if [[ -z "$(opt loki_url)" && -z "$(opt prometheus_url)" ]]; then
+    log "Set loki_url and/or prometheus_url in the add-on configuration."
+    return 1
+  fi
+  if [[ "$(opt collect_logs)" == true && -z "$(opt loki_url)" ]]; then
+    log "collect_logs is on, but loki_url is empty: not collecting logs."
+  fi
+  if [[ "$(opt collect_host_metrics)$(opt collect_container_metrics)" == *true* && -z "$(opt prometheus_url)" ]]; then
+    log "Metrics collection is on, but prometheus_url is empty: not collecting metrics."
+  fi
+  if [[ "$(opt collect_host_metrics)" == true && -n "$(opt prometheus_url)" ]] && ! host_access; then
+    log "No host access (protection mode is on): host metrics only cover what the add-on container can see."
+    log "Turn protection mode off for metrics on every host filesystem and process."
+  fi
+
+  rm -rf "$CONFIG_DIR"
+  mkdir -p "$CONFIG_DIR"
+  {
+    echo "// Rendered by alloy-collector from the add-on options. Do not edit; it is rewritten on every start."
+    echo
+    render_logging
+    if [[ -n "$(opt loki_url)" ]]; then render_loki; fi
+    if [[ -n "$(opt prometheus_url)" ]]; then render_prometheus; fi
+  } >"$CONFIG_DIR/main.alloy"
+
+  log "Host label: $HOST${OWNER:+, owner label: $OWNER}"
+}
+
+# Copy extra .alloy files next to the main config. If they don't validate together,
+# run without them, so logs and metrics keep flowing.
+add_extras() {
+  local extras=()
+  if [[ -d "$EXTRA_DIR" ]]; then
+    shopt -s nullglob
+    extras=("$EXTRA_DIR"/*.alloy)
+    shopt -u nullglob
+  fi
+  if [[ ${#extras[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  cp "${extras[@]}" "$CONFIG_DIR/"
+  if alloy validate "$CONFIG_DIR" >/dev/null 2>"$RUN_DIR/extras-errors.txt"; then
+    log "Loaded extra config: ${extras[*]##*/}"
+    return 0
+  fi
+
+  log "Extra config in $EXTRA_DIR is invalid; starting WITHOUT it:"
+  cat "$RUN_DIR/extras-errors.txt" >&2
+  for f in "${extras[@]}"; do rm -f "$CONFIG_DIR/${f##*/}"; done
+  return 2
+}
+
+write_extras_readme() {
+  [[ -d "$EXTRA_DIR" && ! -e "$EXTRA_DIR/README.txt" ]] || return 0
+  cat >"$EXTRA_DIR/README.txt" <<'EOF'
+Alloy Collector: extra configuration
+
+Every *.alloy file in this folder is loaded next to the add-on's own config.
+You can send data to the add-on's writers:
+
+  loki.write.default.receiver               (if loki_url is set)
+  prometheus.remote_write.default.receiver  (if prometheus_url is set)
+
+If the files don't validate, the add-on starts without them and logs why.
+Reference: https://grafana.com/docs/alloy/latest/reference/components/
+EOF
+}
+
+check() {
+  render
+  alloy validate "$CONFIG_DIR"
+  add_extras
+}
+
+run() {
+  render
+  if ! alloy validate "$CONFIG_DIR"; then
+    log "The generated config is invalid; this is a bug in the add-on. Generated config:"
+    cat -n "$CONFIG_DIR/main.alloy" >&2
+    exit 1
+  fi
+  write_extras_readme
+  add_extras || true
+
+  if [[ -n "$(opt prometheus_url)" && "$(opt collect_container_metrics)" == true ]]; then
+    mkdir -p "$TEXTFILE_DIR"
+    supervisor-stats "$TEXTFILE_DIR" "$(opt scrape_interval)" &
+  fi
+
+  local listen="127.0.0.1:12345"
+  if [[ -n "$(opt ui_port)" ]]; then
+    listen="0.0.0.0:$(opt ui_port)"
+    log "Alloy UI on port $(opt ui_port) of the Home Assistant host"
+  fi
+
+  LOKI_PASSWORD="$(opt loki_password)"
+  PROMETHEUS_PASSWORD="$(opt prometheus_password)"
+  export LOKI_PASSWORD PROMETHEUS_PASSWORD
+
+  mkdir -p "$STORAGE_DIR"
+  exec alloy run "$CONFIG_DIR" \
+    --storage.path="$STORAGE_DIR" \
+    --server.http.listen-addr="$listen" \
+    --disable-reporting
+}
+
+case "${1:-run}" in
+  run) run ;;
+  check) check ;;
+  *)
+    echo "usage: alloy-collector [run|check]" >&2
+    exit 64
+    ;;
+esac

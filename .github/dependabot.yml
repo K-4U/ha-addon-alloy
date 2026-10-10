@@ -1,0 +1,16 @@
+version: 2
+
+updates:
+  # The Alloy base image. Checked daily, so Alloy updates reach Home Assistant quickly.
+  - package-ecosystem: docker
+    directory: /alloy_collector
+    schedule:
+      interval: daily
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]

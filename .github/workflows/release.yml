@@ -1,0 +1,123 @@
+name: Release
+
+# Publishing a GitHub release (tag like v0.2.0) runs the checks, pushes the images for that
+# version to ghcr.io, then sets that version in config.yaml on main and adds the release notes
+# to CHANGELOG.md. Home Assistant reads config.yaml from main, so it only offers the update once
+# the images exist.
+#
+# alloy-release.yml calls this workflow too, for automatic releases after an Alloy update.
+on:
+  release:
+    types: [published]
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      notes:
+        required: true
+        type: string
+    secrets:
+      VERSION_DEPLOY_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check the version
+        id: version
+        env:
+          VERSION: ${{ inputs.version || github.event.release.tag_name }}
+        run: |
+          version="${VERSION#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$VERSION' is not a version like v1.2.3"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  checks:
+    name: Checks
+    uses: ./.github/workflows/ci.yml
+    with:
+      skip_build: true
+    # A called workflow can't have more permissions than its caller.
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+
+  publish:
+    name: Publish
+    needs: [version, checks]
+    uses: ./.github/workflows/build.yml
+    with:
+      publish: true
+      version: ${{ needs.version.outputs.version }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+
+  update-main:
+    name: Update version on main
+    needs: [version, publish]
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # Pushes with a deploy key: the ruleset on main lets deploy keys bypass the pull request
+    # requirement (personal repositories can't exempt GitHub Actions itself).
+    env:
+      HAS_DEPLOY_KEY: ${{ secrets.VERSION_DEPLOY_KEY != '' }}
+    steps:
+      - name: Check for the deploy key
+        if: env.HAS_DEPLOY_KEY != 'true'
+        run: echo "::warning::Secret VERSION_DEPLOY_KEY is not set; config.yaml on main is not updated, so Home Assistant won't offer this version"
+
+      - uses: actions/checkout@v7
+        if: env.HAS_DEPLOY_KEY == 'true'
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          ssh-key: ${{ secrets.VERSION_DEPLOY_KEY }}
+
+      - name: Commit the version and changelog
+        if: env.HAS_DEPLOY_KEY == 'true'
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          NOTES: ${{ inputs.notes || github.event.release.body }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          config=alloy_collector/config.yaml
+          changelog=alloy_collector/CHANGELOG.md
+          current="$(sed -nE 's/^version: "?([0-9.]+)"?.*/\1/p' "$config")"
+          # Never lower the version, e.g. when releasing a fix for an older version.
+          if [ "$current" = "$VERSION" ] || [ "$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -1)" != "$VERSION" ]; then
+            echo "config.yaml already has $current; not changing it to $VERSION"
+            exit 0
+          fi
+
+          sed -i -E "s/^version: .*/version: \"$VERSION\"/" "$config"
+
+          # New entry right below the "# Changelog" heading
+          entry="$(mktemp)"
+          {
+            echo "## $VERSION"
+            echo
+            if [ -n "$NOTES" ]; then printf '%s\n' "$NOTES"; else echo "- No release notes."; fi
+            echo
+          } > "$entry"
+          { head -n 2 "$changelog"; cat "$entry"; tail -n +3 "$changelog"; } > "$changelog.new"
+          mv "$changelog.new" "$changelog"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release $VERSION [skip ci]"
+          git push origin "HEAD:$BRANCH"

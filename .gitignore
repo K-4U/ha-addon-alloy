@@ -1,0 +1,6 @@
+.DS_Store
+.idea/
+.vscode
+
+# Local design notes, never published
+brainstorms/

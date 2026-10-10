@@ -1,0 +1,31 @@
+name: Dependabot auto-merge
+
+# Turns on auto-merge for Dependabot pull requests. GitHub then merges them only once every
+# required check of the ruleset on main passes. A merged Alloy update is released by alloy-release.yml.
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Enable auto-merge
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDENCIES: ${{ steps.metadata.outputs.dependency-names }}
+        run: |
+          echo "Enabling auto-merge for $DEPENDENCIES ($UPDATE_TYPE)"
+          gh pr merge --auto --merge "$PR_URL"

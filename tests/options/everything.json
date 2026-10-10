@@ -1,0 +1,21 @@
+{
+  "loki_url": "https://loki.example:3100/loki/api/v1/push",
+  "loki_username": "loki-user",
+  "loki_password": "not-a-real-password",
+  "loki_ca_file": "/ssl/ca.pem",
+  "loki_cert_file": "/ssl/client.pem",
+  "loki_key_file": "/ssl/client-key.pem",
+  "loki_insecure_skip_verify": true,
+  "prometheus_url": "https://prometheus.example:9090/api/v1/write",
+  "prometheus_username": "prom-user",
+  "prometheus_password": "not-a-real-password",
+  "prometheus_ca_file": "/ssl/ca.pem",
+  "host": "homeassistant-test",
+  "owner": "tester",
+  "collect_logs": true,
+  "collect_host_metrics": true,
+  "collect_container_metrics": true,
+  "scrape_interval": 30,
+  "log_level": "debug",
+  "ui_port": 12345
+}

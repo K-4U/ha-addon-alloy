@@ -1,0 +1,7 @@
+{
+  "collect_logs": true,
+  "collect_host_metrics": true,
+  "collect_container_metrics": true,
+  "scrape_interval": 60,
+  "log_level": "info"
+}
