@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+
+## What's Changed
+* Add container info, up and name to the Supervisor stats by @K-4U in https://github.com/K-4U/ha-addon-alloy/pull/3
+
+
+**Full Changelog**: https://github.com/K-4U/ha-addon-alloy/compare/v1.2.0...v1.3.0
+
 ## 1.2.0
 
 ## What's Changed
