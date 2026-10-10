@@ -1,0 +1,52 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Home Assistant",
+      "type": "shell",
+      "command": "supervisor_run",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Install add-on",
+      "type": "shell",
+      "command": "ha apps install local_alloy_collector",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Start add-on",
+      "type": "shell",
+      "command": "ha apps stop local_alloy_collector; ha apps start local_alloy_collector; ha apps logs -f local_alloy_collector",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Rebuild and start add-on",
+      "type": "shell",
+      "command": "ha apps rebuild --force local_alloy_collector; ha apps start local_alloy_collector; ha apps logs -f local_alloy_collector",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
