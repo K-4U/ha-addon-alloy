@@ -63,6 +63,18 @@ external_labels() {
   echo "  }"
 }
 
+# Push URL for prefix "loki" or "prometheus": the server URL plus the standard push path
+push_url() {
+  local url
+  url="$(opt "${1}_url")"
+  url="${url%/}"
+  if [[ "$1" == loki ]]; then
+    echo "$url/loki/api/v1/push"
+  else
+    echo "$url/api/v1/write"
+  fi
+}
+
 # endpoint { ... } for prefix "loki" or "prometheus", including basic auth and TLS
 endpoint() {
   local p="$1" env_password user ca cert key skip
@@ -74,7 +86,7 @@ endpoint() {
   skip="$(opt "${p}_insecure_skip_verify")"
 
   echo "  endpoint {"
-  echo "    url = $(str "$(opt "${p}_url")")"
+  echo "    url = $(str "$(push_url "$p")")"
   if [[ -n "$user" ]]; then
     # The password stays out of the rendered file; Alloy reads it from the environment
     echo "    basic_auth {"
