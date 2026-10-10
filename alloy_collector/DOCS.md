@@ -30,7 +30,18 @@ Logs also get:
 - `level`: the journal priority, e.g. `error`, `warning`, `info`
 - `job`: `systemd-journal`
 
-Container metrics get the same `container` and `service` labels, so one dashboard filter works for both.
+Container metrics get the same `container` and `service` labels, so one dashboard filter works for both, plus `name` (e.g. `Mosquitto broker`, `Home Assistant Core`):
+
+| Metric | Meaning |
+|---|---|
+| `ha_container_info` | Always 1, for every add-on (stopped ones too) and system container. Extra labels `state` and `version`. |
+| `ha_container_up` | 1 if the stats of a running container could be read, 0 if not |
+| `ha_container_cpu_percent` | CPU usage in percent of all CPU cores combined (100 = the whole machine) |
+| `ha_container_memory_usage_bytes`, `ha_container_memory_limit_bytes`, `ha_container_memory_percent` | Memory in use, its limit, and usage in percent of the limit |
+| `ha_container_network_receive_bytes_total`, `ha_container_network_transmit_bytes_total` | Network traffic since the container started |
+| `ha_container_disk_read_bytes_total`, `ha_container_disk_write_bytes_total` | Disk I/O since the container started |
+
+Stopped add-ons only have `ha_container_info`, with `state="stopped"`.
 
 ## Options
 
