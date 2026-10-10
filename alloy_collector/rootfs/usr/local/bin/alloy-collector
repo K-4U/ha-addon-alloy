@@ -173,9 +173,33 @@ loki.relabel "journal" {
     target_label  = "service"
     replacement   = "$2"
   }
-  rule { // level = emerg, alert, crit, error, warning, notice, info, debug
-    source_labels = ["__journal_priority_keyword"]
+  rule { // level = the journal priority (emerg ... debug), only for entries NOT from a container:
+         // Docker gives everything a container writes to stderr priority "err"
+    source_labels = ["__journal_container_name", "__journal_priority_keyword"]
+    separator     = ";"
+    regex         = `;(.+)`
     target_label  = "level"
+  }
+}
+
+// Container lines: level = the first DEBUG/INFO/WARNING/ERROR/CRITICAL/FATAL in the line,
+// lowercased. Lines without one get no level label, so Loki detects it.
+loki.process "journal" {
+  forward_to = [loki.write.default.receiver]
+
+  stage.match {
+    selector = "{container=~\".+\"}"
+
+    stage.regex {
+      expression = `\b(?P<level>DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL)\b`
+    }
+    stage.template {
+      source   = "level"
+      template = "{{ ToLower .Value }}"
+    }
+    stage.labels {
+      values = { level = "" }
+    }
   }
 }
 
@@ -186,7 +210,7 @@ loki.source.journal "journal" {
   path          = $(str "$JOURNAL_PATH")
   max_age       = "12h"
   relabel_rules = loki.relabel.journal.rules
-  forward_to    = [loki.write.default.receiver]
+  forward_to    = [loki.process.journal.receiver]
   labels        = {job = "systemd-journal"}
 }
 
