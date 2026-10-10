@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0
+
+## What's Changed
+* Build push URLs from the server address by @K-4U in https://github.com/K-4U/ha-addon-alloy/pull/1
+
+## New Contributors
+* @K-4U made their first contribution in https://github.com/K-4U/ha-addon-alloy/pull/1
+
+**Full Changelog**: https://github.com/K-4U/ha-addon-alloy/compare/v1.0.0...v1.1.0
+
 ## 1.0.0
 
 Initial release.
