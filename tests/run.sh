@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Renders and validates the add-on's Alloy config for every fixture in tests/options,
-# with and without host access, plus the extra-config handling.
+# with and without host access, the push URLs, the Supervisor stats poller and the
+# extra-config handling.
 #
 #   tests/run.sh <image>
 #
@@ -55,6 +56,13 @@ expect_urls() { # expect_urls <fixture> <expected loki url> <expected prometheus
 expect_urls defaults "http://10.42.1.2:3100/loki/api/v1/push" "http://10.42.1.2:9090/api/v1/write"
 expect_urls writers-only "http://10.42.1.2:3100/loki/api/v1/push" "http://10.42.1.2:9090/api/v1/write"
 expect_urls everything "https://loki.example:3100/loki/api/v1/push" "https://prometheus.example:9090/api/v1/write"
+
+# Supervisor stats poller against canned Supervisor responses (tests/supervisor)
+if output="$(docker run --rm -v "$(host_path "$tests"):/tests:ro" --entrypoint bash "$image" /tests/supervisor/check.sh 2>&1)"; then
+  pass "supervisor-stats output"
+else
+  fail "supervisor-stats output"; echo "$output" | grep -v '^ok' | sed 's/^/      /'
+fi
 
 # Extra .alloy files: a valid one loads, an invalid one is reported (exit code 2)
 work="$(mktemp -d)"

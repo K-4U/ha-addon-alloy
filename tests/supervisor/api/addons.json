@@ -1,0 +1,1 @@
+{"result":"ok","data":{"addons":[{"slug":"core_mosquitto","name":"Mosquitto broker","state":"started","version":"6.4.1"},{"slug":"5c53de3b_esphome","name":"ESPHome \"Device\" Builder","state":"stopped","version":"2026.9.0"},{"slug":"local_broken","name":"Broken","state":"started","version":"0.1"}]}}

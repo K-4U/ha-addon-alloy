@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Stand-in for curl in tests: answers http://supervisor/<path> with tests/supervisor/api/<path>.json,
+# and fails like `curl -f` on a 404 when there's no such file.
+url="${*: -1}"
+file="/tests/supervisor/api/${url#http://supervisor/}.json"
+if [[ ! -f "$file" ]]; then
+  exit 22
+fi
+cat "$file"

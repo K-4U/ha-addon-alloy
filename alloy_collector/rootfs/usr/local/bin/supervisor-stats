@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Polls the Supervisor for CPU, memory, network and disk stats of every Home Assistant
-# container (core, Supervisor, plugins and started add-ons), and writes them in
-# Prometheus text format for the unix exporter's textfile collector.
+# container (core, Supervisor, plugins and add-ons), and writes them in Prometheus text
+# format for the unix exporter's textfile collector.
 #
 #   supervisor-stats <directory> <interval in seconds>
 set -uo pipefail
@@ -13,54 +13,73 @@ api() {
   curl -fsS --max-time 10 -H "Authorization: Bearer ${SUPERVISOR_TOKEN:-}" "http://supervisor$1" | jq -c '.data'
 }
 
-# Rows of {container, stats} -> Prometheus text format.
-# service = container name without its prefix, matching the journal logs.
+# Rows of {container, name, state, version, up, stats} -> Prometheus text format.
+# Labels: container (Docker name), service (container name without its prefix, matching the
+# journal logs) and name (human name). Stopped add-ons only get ha_container_info.
 # shellcheck disable=SC2016 # a jq program, not shell
 to_prometheus='
+  def esc: tostring | gsub("\\\\"; "\\\\") | gsub("\""; "\\\"") | gsub("\n"; "\\n");
+  def labels:
+    "container=\"\(.container | esc)\",service=\"\(.container | sub("^(addon_[^_]+_|hassio_)"; "") | esc)\",name=\"\(.name | esc)\"";
   def metrics: [
-    {name: "ha_container_cpu_percent", type: "gauge", help: "CPU usage in percent of one core", key: "cpu_percent"},
+    {name: "ha_container_cpu_percent", type: "gauge", help: "CPU usage in percent of all CPU cores combined (100 = the whole machine)", key: "cpu_percent"},
     {name: "ha_container_memory_usage_bytes", type: "gauge", help: "Memory in use", key: "memory_usage"},
     {name: "ha_container_memory_limit_bytes", type: "gauge", help: "Memory limit", key: "memory_limit"},
     {name: "ha_container_memory_percent", type: "gauge", help: "Memory in use, in percent of the limit", key: "memory_percent"},
-    {name: "ha_container_network_receive_bytes_total", type: "counter", help: "Bytes received", key: "network_rx"},
-    {name: "ha_container_network_transmit_bytes_total", type: "counter", help: "Bytes sent", key: "network_tx"},
-    {name: "ha_container_disk_read_bytes_total", type: "counter", help: "Bytes read from disk", key: "blk_read"},
-    {name: "ha_container_disk_write_bytes_total", type: "counter", help: "Bytes written to disk", key: "blk_write"}
+    {name: "ha_container_network_receive_bytes_total", type: "counter", help: "Bytes received since the container started", key: "network_rx"},
+    {name: "ha_container_network_transmit_bytes_total", type: "counter", help: "Bytes sent since the container started", key: "network_tx"},
+    {name: "ha_container_disk_read_bytes_total", type: "counter", help: "Bytes read from disk since the container started", key: "blk_read"},
+    {name: "ha_container_disk_write_bytes_total", type: "counter", help: "Bytes written to disk since the container started", key: "blk_write"}
   ];
   . as $rows
-  | metrics[] as $m
-  | "# HELP \($m.name) \($m.help)",
-    "# TYPE \($m.name) \($m.type)",
-    ($rows[]
-      | select(.stats[$m.key] != null)
-      | (.container | sub("^(addon_[^_]+_|hassio_)"; "")) as $service
-      | "\($m.name){container=\"\(.container)\",service=\"\($service)\"} \(.stats[$m.key])")
+  | "# HELP ha_container_info Every add-on (also stopped ones) and system container; always 1",
+    "# TYPE ha_container_info gauge",
+    ($rows[] | "ha_container_info{\(labels),state=\"\(.state | esc)\",version=\"\(.version | esc)\"} 1"),
+    "# HELP ha_container_up 1 if the stats of this running container could be read this cycle, else 0",
+    "# TYPE ha_container_up gauge",
+    ($rows[] | select(.state == "started") | "ha_container_up{\(labels)} \(.up)"),
+    (metrics[] as $m
+      | "# HELP \($m.name) \($m.help)",
+        "# TYPE \($m.name) \($m.type)",
+        ($rows[] | select(.stats != null and .stats[$m.key] != null) | "\($m.name){\(labels)} \(.stats[$m.key])"))
 '
 
 while true; do
-  # endpoint path -> Docker container name
-  targets=(
-    "/core homeassistant"
-    "/supervisor hassio_supervisor"
-    "/dns hassio_dns"
-    "/audio hassio_audio"
-    "/cli hassio_cli"
-    "/multicast hassio_multicast"
-    "/observer hassio_observer"
-  )
-  while read -r slug; do
-    targets+=("/addons/$slug addon_$slug")
-  done < <(api /addons | jq -r '.addons[] | select(.state == null or .state == "started") | .slug' 2>/dev/null)
-
   rows=()
-  for target in "${targets[@]}"; do
-    read -r path container <<<"$target"
-    if stats="$(api "$path/stats" 2>/dev/null)" && [[ -n "$stats" && "$stats" != null ]]; then
-      rows+=("$(jq -nc --arg c "$container" --argjson s "$stats" '{container: $c, stats: $s}')")
-    else
-      echo "[supervisor-stats] Could not read $path/stats" >&2
+
+  # add_row <api path> <container> <name> <state> <version>: reads stats for running containers
+  add_row() {
+    local stats=null up=0
+    if [[ "$4" == started ]]; then
+      if stats="$(api "$1/stats" 2>/dev/null)" && [[ -n "$stats" && "$stats" != null ]]; then
+        up=1
+      else
+        stats=null
+        echo "[supervisor-stats] Could not read $1/stats" >&2
+      fi
     fi
+    rows+=("$(jq -nc --arg c "$2" --arg n "$3" --arg s "$4" --arg v "$5" --argjson up "$up" --argjson st "$stats" \
+      '{container: $c, name: $n, state: $s, version: $v, up: $up, stats: $st}')")
+  }
+
+  # System containers: API path, Docker container name, human name
+  for system in \
+    "core homeassistant Home Assistant Core" \
+    "supervisor hassio_supervisor Supervisor" \
+    "dns hassio_dns DNS" \
+    "audio hassio_audio Audio" \
+    "cli hassio_cli CLI" \
+    "multicast hassio_multicast Multicast" \
+    "observer hassio_observer Observer"; do
+    read -r path container name <<<"$system"
+    version="$(api "/$path/info" 2>/dev/null | jq -r '.version // empty' || true)"
+    add_row "/$path" "$container" "$name" started "$version"
   done
+
+  # Add-ons, including stopped ones (those only get ha_container_info)
+  while IFS=$'\t' read -r slug name state version; do
+    add_row "/addons/$slug" "addon_$slug" "$name" "$state" "$version"
+  done < <(api /addons 2>/dev/null | jq -r '.addons[] | [.slug, .name, (.state // "unknown"), (.version // "")] | @tsv')
 
   # Write atomically, so the exporter never reads a half-written file
   if printf '%s\n' "${rows[@]}" | jq -rs "$to_prometheus" >"$dir/.supervisor.prom.tmp"; then
