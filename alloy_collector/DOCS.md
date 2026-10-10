@@ -25,9 +25,11 @@ Every log line and metric gets:
 
 Logs also get:
 
-- `container`: the raw container name, e.g. `homeassistant`, `hassio_supervisor`, `addon_core_mosquitto`
+- `container`: the raw container name, e.g. `homeassistant`, `hassio_supervisor`, `app_core_mosquitto`
 - `service`: a clean name. The container name without its prefix (`mosquitto`, `supervisor`, `homeassistant`), or the systemd unit without `.service` (`docker`), or the program name (`kernel`)
-- `level`: the journal priority, e.g. `error`, `warning`, `info`
+- `level`:
+  - Container lines (Home Assistant, the Supervisor, add-ons): the first `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` or `FATAL` in the line, lowercased. Lines without one get no `level` label, and Loki detects the level itself. The journal's own priority isn't used for these lines, because Docker marks everything a container writes to stderr as an error.
+  - Other lines (the OS): the journal priority, e.g. `err`, `warning`, `notice`, `info`
 - `job`: `systemd-journal`
 
 Container metrics get the same `container` and `service` labels, so one dashboard filter works for both, plus `name` (e.g. `Mosquitto broker`, `Home Assistant Core`):

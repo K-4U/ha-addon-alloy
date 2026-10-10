@@ -20,20 +20,20 @@ has() { if grep -qxF "$1" "$out/supervisor.prom"; then echo "ok    has: $1"; els
 lacks() { if grep -q "$1" "$out/supervisor.prom"; then echo "FAIL  unexpected: $1"; failures=$((failures + 1)); else echo "ok    lacks: $1"; fi; }
 
 # Running add-on: info, up and stats, with container/service/name labels
-has 'ha_container_info{container="addon_core_mosquitto",service="mosquitto",name="Mosquitto broker",state="started",version="6.4.1"} 1'
-has 'ha_container_up{container="addon_core_mosquitto",service="mosquitto",name="Mosquitto broker"} 1'
-has 'ha_container_memory_usage_bytes{container="addon_core_mosquitto",service="mosquitto",name="Mosquitto broker"} 20000000'
-has 'ha_container_disk_write_bytes_total{container="addon_core_mosquitto",service="mosquitto",name="Mosquitto broker"} 400'
+has 'ha_container_info{container="app_core_mosquitto",service="mosquitto",name="Mosquitto broker",state="started",version="6.4.1"} 1'
+has 'ha_container_up{container="app_core_mosquitto",service="mosquitto",name="Mosquitto broker"} 1'
+has 'ha_container_memory_usage_bytes{container="app_core_mosquitto",service="mosquitto",name="Mosquitto broker"} 20000000'
+has 'ha_container_disk_write_bytes_total{container="app_core_mosquitto",service="mosquitto",name="Mosquitto broker"} 400'
 # System container: version from its /info, fixed human name
 has 'ha_container_info{container="homeassistant",service="homeassistant",name="Home Assistant Core",state="started",version="2026.10.1"} 1'
 has 'ha_container_cpu_percent{container="homeassistant",service="homeassistant",name="Home Assistant Core"} 3.2'
 # Stopped add-on: only info (quotes in the name escaped), no up and no stats
-has 'ha_container_info{container="addon_5c53de3b_esphome",service="esphome",name="ESPHome \"Device\" Builder",state="stopped",version="2026.9.0"} 1'
-lacks 'ha_container_up{container="addon_5c53de3b_esphome"'
-lacks 'ha_container_cpu_percent{container="addon_5c53de3b_esphome"'
+has 'ha_container_info{container="app_5c53de3b_esphome",service="esphome",name="ESPHome \"Device\" Builder",state="stopped",version="2026.9.0"} 1'
+lacks 'ha_container_up{container="app_5c53de3b_esphome"'
+lacks 'ha_container_cpu_percent{container="app_5c53de3b_esphome"'
 # Running add-on whose stats call fails: up 0, no stats
-has 'ha_container_up{container="addon_local_broken",service="broken",name="Broken"} 0'
-lacks 'ha_container_cpu_percent{container="addon_local_broken"'
+has 'ha_container_up{container="app_local_broken",service="broken",name="Broken"} 0'
+lacks 'ha_container_cpu_percent{container="app_local_broken"'
 # Plugins without canned responses: up 0
 has 'ha_container_up{container="hassio_audio",service="audio",name="Audio"} 0'
 

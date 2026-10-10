@@ -20,7 +20,7 @@ api() {
 to_prometheus='
   def esc: tostring | gsub("\\\\"; "\\\\") | gsub("\""; "\\\"") | gsub("\n"; "\\n");
   def labels:
-    "container=\"\(.container | esc)\",service=\"\(.container | sub("^(addon_[^_]+_|hassio_)"; "") | esc)\",name=\"\(.name | esc)\"";
+    "container=\"\(.container | esc)\",service=\"\(.container | sub("^(app_[^_]+_|hassio_)"; "") | esc)\",name=\"\(.name | esc)\"";
   def metrics: [
     {name: "ha_container_cpu_percent", type: "gauge", help: "CPU usage in percent of all CPU cores combined (100 = the whole machine)", key: "cpu_percent"},
     {name: "ha_container_memory_usage_bytes", type: "gauge", help: "Memory in use", key: "memory_usage"},
@@ -78,7 +78,7 @@ while true; do
 
   # Add-ons, including stopped ones (those only get ha_container_info)
   while IFS=$'\t' read -r slug name state version; do
-    add_row "/addons/$slug" "addon_$slug" "$name" "$state" "$version"
+    add_row "/addons/$slug" "app_$slug" "$name" "$state" "$version"
   done < <(api /addons 2>/dev/null | jq -r '.addons[] | [.slug, .name, (.state // "unknown"), (.version // "")] | @tsv')
 
   # Write atomically, so the exporter never reads a half-written file
