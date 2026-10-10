@@ -43,6 +43,21 @@ host_access() {
   [[ "$(cat /proc/1/comm 2>/dev/null)" == systemd && -r /proc/1/root/etc/os-release ]]
 }
 
+# Directory with the host journal (journald: true mounts it read-only). An explicit path is
+# required: without one, Alloy only reads journal files of the container's own machine ID,
+# which never match the host's, so it silently reads nothing.
+journal_path() {
+  local dir
+  for dir in /var/log/journal /run/log/journal; do
+    if [[ -n "$(find "$dir" -name '*.journal' -print -quit 2>/dev/null)" ]]; then
+      echo "$dir"
+      return 0
+    fi
+  done
+  echo /var/log/journal
+  return 1
+}
+
 resolve_host() {
   local host
   host="$(opt host)"
@@ -129,6 +144,11 @@ EOF
   if [[ "$(opt collect_logs)" != true ]]; then
     return
   fi
+  if JOURNAL_PATH="$(journal_path)"; then
+    log "Reading the host journal from $JOURNAL_PATH"
+  else
+    log "WARNING: no journal files in /var/log/journal or /run/log/journal; logs will stay empty."
+  fi
   cat <<'EOF'
 // Journal labels: container = raw container name, service = the cleanest name available
 loki.relabel "journal" {
@@ -159,8 +179,11 @@ loki.relabel "journal" {
   }
 }
 
+EOF
+  cat <<EOF
 // Host journal: HA core, Supervisor, every add-on and the OS
 loki.source.journal "journal" {
+  path          = $(str "$JOURNAL_PATH")
   max_age       = "12h"
   relabel_rules = loki.relabel.journal.rules
   forward_to    = [loki.write.default.receiver]
