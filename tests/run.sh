@@ -40,6 +40,22 @@ for options in "$tests"/options/*.json; do
   done
 done
 
+# Push URLs: the server URL plus the standard push path, with or without a trailing slash
+rendered_urls() { # rendered_urls <options.json> -> the url = lines of the rendered config
+  docker run --rm -e ALLOY_COLLECTOR_HOSTNAME=ci -e ALLOY_COLLECTOR_HOST_ACCESS=true \
+    -v "$(host_path "$1"):/data/options.json:ro" --entrypoint bash "$image" \
+    -c 'alloy-collector check >/dev/null 2>&1; grep -o "url = \".*\"" /run/alloy-collector/config/main.alloy'
+}
+expect_urls() { # expect_urls <fixture> <expected loki url> <expected prometheus url>
+  local expected actual
+  expected="$(printf 'url = "%s"\nurl = "%s"' "$2" "$3")"
+  actual="$(rendered_urls "$tests/options/$1.json")"
+  if [[ "$actual" == "$expected" ]]; then pass "push URLs ($1)"; else fail "push URLs ($1): got $(echo "$actual" | tr '\n' ' ')"; fi
+}
+expect_urls defaults "http://10.42.1.2:3100/loki/api/v1/push" "http://10.42.1.2:9090/api/v1/write"
+expect_urls writers-only "http://10.42.1.2:3100/loki/api/v1/push" "http://10.42.1.2:9090/api/v1/write"
+expect_urls everything "https://loki.example:3100/loki/api/v1/push" "https://prometheus.example:9090/api/v1/write"
+
 # Extra .alloy files: a valid one loads, an invalid one is reported (exit code 2)
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT

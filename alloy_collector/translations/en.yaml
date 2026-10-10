@@ -1,7 +1,7 @@
 configuration:
   loki_url:
     name: Loki URL
-    description: Loki push endpoint, e.g. http://10.42.1.2:3100/loki/api/v1/push. Leave empty to not send logs.
+    description: Loki server, e.g. http://10.42.1.2:3100. Leave empty to not send logs.
   loki_username:
     name: Loki username
     description: Username for basic auth. Leave empty for no auth.
@@ -22,7 +22,7 @@ configuration:
     description: Accept any TLS certificate from Loki. Only for testing.
   prometheus_url:
     name: Prometheus URL
-    description: Prometheus remote-write endpoint, e.g. http://10.42.1.2:9090/api/v1/write. Leave empty to not send metrics.
+    description: Prometheus server, e.g. http://10.42.1.2:9090. Leave empty to not send metrics.
   prometheus_username:
     name: Prometheus username
     description: Username for basic auth. Leave empty for no auth.

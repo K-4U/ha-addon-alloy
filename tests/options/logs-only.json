@@ -1,5 +1,5 @@
 {
-  "loki_url": "http://10.42.1.2:3100/loki/api/v1/push",
+  "loki_url": "http://10.42.1.2:3100",
   "collect_logs": true,
   "collect_host_metrics": true,
   "collect_container_metrics": true,

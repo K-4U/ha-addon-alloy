@@ -1,6 +1,6 @@
 {
-  "loki_url": "http://10.42.1.2:3100/loki/api/v1/push",
-  "prometheus_url": "http://10.42.1.2:9090/api/v1/write",
+  "loki_url": "http://10.42.1.2:3100",
+  "prometheus_url": "http://10.42.1.2:9090",
   "collect_logs": false,
   "collect_host_metrics": false,
   "collect_container_metrics": true,
