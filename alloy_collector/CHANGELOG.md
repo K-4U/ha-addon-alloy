@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0
+
+## What's Changed
+* Recognise lowercase and one-letter log levels by @K-4U in https://github.com/K-4U/ha-addon-alloy/pull/5
+
+
+**Full Changelog**: https://github.com/K-4U/ha-addon-alloy/compare/v1.4.0...v1.5.0
+
 ## 1.4.0
 
 ## What's Changed
