@@ -182,8 +182,8 @@ loki.relabel "journal" {
   }
 }
 
-// Container lines: level = the first DEBUG/INFO/WARNING/ERROR/CRITICAL/FATAL in the line,
-// lowercased. Lines without one get no level label, so Loki detects it.
+// Container lines: level from the line itself, lowercased. Later formats are more specific
+// and win. Lines without any get no level label, so Loki detects it.
 loki.process "journal" {
   forward_to = [loki.write.default.receiver]
 
@@ -196,9 +196,29 @@ loki.process "journal" {
       source   = "plain"
       template = `{{ regexReplaceAll "\x1b\\[[0-9;]*m" .Entry "" }}`
     }
+    // 1. A level word in capitals anywhere: "2026-10-11 00:26:24 WARNING (MainThread) ..."
     stage.regex {
       source     = "plain"
       expression = `\b(?P<level>DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL)\b`
+    }
+    // 2. A one-letter level in brackets (OpenThread): "2d.18:45:17.668 [W] P-RadioSpinel-: ..."
+    stage.regex {
+      source     = "plain"
+      expression = `(?:^|\s)\[(?P<letter>[CWNIDE])\]\s`
+    }
+    stage.template {
+      source   = "level"
+      template = `{{ $l := or .letter "" }}{{ if eq $l "C" }}critical{{ else if eq $l "W" }}warning{{ else if eq $l "N" }}notice{{ else if eq $l "I" }}info{{ else if eq $l "D" }}debug{{ else if eq $l "E" }}error{{ else }}{{ or .Value "" }}{{ end }}`
+    }
+    // 3. A lowercase level right after a leading [timestamp] (Zigbee2MQTT): "[2026-10-11 01:07:31] info: ..."
+    stage.regex {
+      source     = "plain"
+      expression = `^\[[^\]]*\]\s+(?P<level>debug|info|warn|warning|error)\s*:`
+    }
+    // 4. logfmt (Alloy, Go apps): "ts=... level=info msg=..."
+    stage.regex {
+      source     = "plain"
+      expression = `(?:^|\s)level=(?P<level>[A-Za-z]+)`
     }
     stage.template {
       source   = "level"

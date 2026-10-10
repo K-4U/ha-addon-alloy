@@ -28,7 +28,13 @@ Logs also get:
 - `container`: the raw container name, e.g. `homeassistant`, `hassio_supervisor`, `app_core_mosquitto`
 - `service`: a clean name. The container name without its prefix (`mosquitto`, `supervisor`, `homeassistant`), or the systemd unit without `.service` (`docker`), or the program name (`kernel`)
 - `level`:
-  - Container lines (Home Assistant, the Supervisor, add-ons): the first `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` or `FATAL` in the line, lowercased. Lines without one get no `level` label, and Loki detects the level itself. The journal's own priority isn't used for these lines, because Docker marks everything a container writes to stderr as an error.
+  - Container lines (Home Assistant, the Supervisor, add-ons): the level written in the line, lowercased. Recognised, from least to most specific (the most specific wins):
+    - a level word in capitals anywhere: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`, `FATAL` (Home Assistant, the Supervisor)
+    - a one-letter level in brackets: `[W]`, `[I]`, `[E]`, … (OpenThread)
+    - a lowercase level right after a leading `[timestamp]`: `[2026-10-11 01:07:31] info:` (Zigbee2MQTT)
+    - logfmt: `level=info` (Alloy, Go apps)
+
+    Terminal colour codes are ignored. Lines without any of these get no `level` label, and Loki detects the level itself. The journal's own priority isn't used for these lines, because Docker marks everything a container writes to stderr as an error.
   - Other lines (the OS): the journal priority, e.g. `err`, `warning`, `notice`, `info`
 - `job`: `systemd-journal`
 

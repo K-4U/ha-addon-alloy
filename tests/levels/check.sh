@@ -41,6 +41,11 @@ push '{"container":"app_core_mosquitto","t":"3"}' '2026-10-11 00:26:24: New conn
 push '{"container":"app_local_x","t":"4"}' '[00:26:24] ERROR: Something failed'
 push '{"service":"systemd-journald","level":"notice","t":"5"}' 'Journal started'
 push '{"container":"app_b9845f46_govee2mqtt","t":"6"}' $'[2026-10-11T00:27:56 \e[32mINFO \e[0m govee::commands::serve] Querying API'
+push '{"container":"app_45df7312_zigbee2mqtt","t":"7"}' $'[2026-10-11 01:07:31] \e[32minfo\e[39m: \tz2m:mqtt: MQTT publish: topic \'zigbee2mqtt/Valje\''
+push '{"container":"app_45df7312_zigbee2mqtt","t":"8"}' '[2026-10-11 01:07:31] error: 	z2m: Failed to ping Kitchen'
+push '{"container":"app_77b740e0_alloy_collector","t":"9"}' 'ts=2026-10-10T22:23:16.77Z level=info msg="ERROR is just a word here" component_id=x'
+push '{"container":"app_core_openthread_border_router","t":"10"}' '2d.18:45:17.668 [W] P-RadioSpinel-: Handle transmit done failed: ChannelAccessFailure'
+push '{"container":"app_core_mosquitto","t":"11"}' '2026-10-11 00:31:26: Client 172.30.32.2 disconnected: connection error: timeout'
 
 failures=0
 expect() { # expect <t> <expected level, or "none">
@@ -63,5 +68,10 @@ expect 3 none    # no level word: Loki detects it
 expect 4 error
 expect 5 notice  # not from a container: journal priority kept
 expect 6 info    # level word right after a colour code (govee2mqtt)
+expect 7 info    # Zigbee2MQTT, lowercase after the timestamp, with colour codes
+expect 8 error   # Zigbee2MQTT error
+expect 9 info    # logfmt level wins over a capitalised word in the message
+expect 10 warning # OpenThread one-letter level
+expect 11 none   # lowercase "error" inside a sentence doesn't count
 
 exit $((failures > 0))
