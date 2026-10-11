@@ -53,7 +53,7 @@ Stopped add-ons only have `ha_container_info`, with `state="stopped"`.
 
 ## Options
 
-- **Loki URL / Prometheus URL**: the servers to send logs and metrics to, e.g. `http://10.42.1.2:3100` and `http://10.42.1.2:9090`. The add-on adds the push paths itself (`/loki/api/v1/push` and `/api/v1/write`). Leave one empty to not send that kind of data.
+- **Loki URL / Prometheus URL**: the servers to send logs and metrics to, e.g. `http://10.42.1.2:3100` and `http://10.42.1.2:9090`. The add-on adds the push paths itself (`/loki/api/v1/push` and `/api/v1/write`). A URL that already has a path is used as-is, e.g. `http://192.168.1.20:9090/api/v1/metrics/write` for another Alloy acting as a relay (`prometheus.receive_http` only accepts that path). Leave one empty to not send that kind of data.
 - **Username / password**: basic auth, optional.
 - **CA certificate, client certificate, client key**: TLS, optional. Put the files in Home Assistant's `ssl` folder and use paths like `/ssl/ca.pem`.
 - **Skip TLS verification**: accept any certificate. Only for testing.
