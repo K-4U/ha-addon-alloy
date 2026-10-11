@@ -41,7 +41,8 @@ for options in "$tests"/options/*.json; do
   done
 done
 
-# Push URLs: the server URL plus the standard push path, with or without a trailing slash
+# Push URLs: the server URL plus the standard push path, with or without a trailing slash;
+# a URL that already has a path (an Alloy relay) is used as-is
 rendered_urls() { # rendered_urls <options.json> -> the url = lines of the rendered config
   docker run --rm -e ALLOY_COLLECTOR_HOSTNAME=ci -e ALLOY_COLLECTOR_HOST_ACCESS=true \
     -v "$(host_path "$1"):/data/options.json:ro" --entrypoint bash "$image" \
@@ -56,6 +57,7 @@ expect_urls() { # expect_urls <fixture> <expected loki url> <expected prometheus
 expect_urls defaults "http://10.42.1.2:3100/loki/api/v1/push" "http://10.42.1.2:9090/api/v1/write"
 expect_urls writers-only "http://10.42.1.2:3100/loki/api/v1/push" "http://10.42.1.2:9090/api/v1/write"
 expect_urls everything "https://loki.example:3100/loki/api/v1/push" "https://prometheus.example:9090/api/v1/write"
+expect_urls full-urls "http://192.168.1.20:3100/loki/api/v1/push" "http://192.168.1.20:9090/api/v1/metrics/write"
 
 # Supervisor stats poller against canned Supervisor responses (tests/supervisor)
 if output="$(docker run --rm -v "$(host_path "$tests"):/tests:ro" --entrypoint bash "$image" /tests/supervisor/check.sh 2>&1)"; then

@@ -78,12 +78,15 @@ external_labels() {
   echo "  }"
 }
 
-# Push URL for prefix "loki" or "prometheus": the server URL plus the standard push path
+# Push URL for prefix "loki" or "prometheus": a URL with a path is used as-is
+# (e.g. an Alloy relay's /api/v1/metrics/write); a bare server URL gets the standard push path
 push_url() {
   local url
   url="$(opt "${1}_url")"
   url="${url%/}"
-  if [[ "$1" == loki ]]; then
+  if [[ "$url" =~ ^[a-zA-Z][a-zA-Z0-9+.-]*://[^/]+/. ]]; then
+    echo "$url"
+  elif [[ "$1" == loki ]]; then
     echo "$url/loki/api/v1/push"
   else
     echo "$url/api/v1/write"
