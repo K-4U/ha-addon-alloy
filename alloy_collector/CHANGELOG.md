@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0
+
+## What's Changed
+* Use a push URL's own path when it has one by @K-4U in https://github.com/K-4U/ha-addon-alloy/pull/6
+
+
+**Full Changelog**: https://github.com/K-4U/ha-addon-alloy/compare/v1.5.0...v1.6.0
+
 ## 1.5.0
 
 ## What's Changed
