@@ -6,7 +6,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY rootfs /
-RUN chmod +x /usr/local/bin/alloy-collector /usr/local/bin/supervisor-stats
+RUN chmod +x /usr/local/bin/alloy-collector /usr/local/bin/supervisor-stats /usr/local/bin/frigate-targets
 
 ENTRYPOINT ["/usr/local/bin/alloy-collector"]
 CMD ["run"]

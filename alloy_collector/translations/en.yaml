@@ -56,6 +56,12 @@ configuration:
   collect_container_metrics:
     name: Collect container metrics
     description: Send CPU, memory, network and disk usage of Home Assistant, the Supervisor and every add-on to Prometheus.
+  collect_frigate_metrics:
+    name: Collect Frigate metrics
+    description: Send Frigate's metrics (camera and detection FPS, detector speed, storage) to Prometheus. Finds the Frigate add-on by itself.
+  frigate_address:
+    name: Frigate address
+    description: Frigate's API as host:port, e.g. 192.168.1.30:5000, when Frigate doesn't run as an add-on on this machine. Leave empty to find the Frigate add-on.
   scrape_interval:
     name: Scrape interval
     description: How often metrics are collected, in seconds.

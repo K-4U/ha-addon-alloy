@@ -66,6 +66,28 @@ else
   fail "supervisor-stats output"; echo "$output" | grep -v '^ok' | sed 's/^/      /'
 fi
 
+# Frigate add-on discovery against the same canned Supervisor responses
+if output="$(docker run --rm -v "$(host_path "$tests"):/tests:ro" --entrypoint bash "$image" /tests/supervisor/frigate-check.sh 2>&1)"; then
+  pass "frigate targets"
+else
+  fail "frigate targets"; echo "$output" | grep -v '^ok' | sed 's/^/      /'
+fi
+
+# Frigate scrape: discovered add-ons by default, the frigate_address option (port 5000 added) when set
+rendered_frigate() { # rendered_frigate <fixture> -> the targets = line of the frigate scrape
+  docker run --rm -e ALLOY_COLLECTOR_HOSTNAME=ci -e ALLOY_COLLECTOR_HOST_ACCESS=true \
+    -v "$(host_path "$tests/options/$1.json"):/data/options.json:ro" --entrypoint bash "$image" \
+    -c 'alloy-collector check >/dev/null 2>&1; sed -n "/^prometheus.scrape \"frigate\"/,/^}/p" /run/alloy-collector/config/main.alloy | grep -o "targets .*"'
+}
+expect_frigate() { # expect_frigate <fixture> <expected targets line>
+  local actual
+  actual="$(rendered_frigate "$1")"
+  if [[ "$actual" == "$2" ]]; then pass "frigate scrape ($1)"; else fail "frigate scrape ($1): got $actual"; fi
+}
+expect_frigate frigate 'targets         = discovery.file.frigate.targets'
+expect_frigate frigate-address-only 'targets         = [{__address__ = "192.168.1.30:5000", service = "frigate"}]'
+expect_frigate defaults ''
+
 # Log levels of journal lines, through the rendered config (tests/levels)
 if output="$(docker run --rm -e ALLOY_COLLECTOR_HOSTNAME=ci -e ALLOY_COLLECTOR_HOST_ACCESS=true \
   -v "$(host_path "$tests/options/defaults.json"):/data/options.json:ro" \

@@ -2,15 +2,16 @@
 
 ## How it works
 
-The image is the official `grafana/alloy` image plus `curl`, `jq` and two scripts:
+The image is the official `grafana/alloy` image plus `curl`, `jq` and three scripts:
 
 - [`alloy-collector`](alloy_collector/rootfs/usr/local/bin/alloy-collector) is the entrypoint. It:
   1. renders the Alloy config from the add-on options (`/data/options.json`)
   2. validates the config
   3. adds any extra `.alloy` files from the add-on's config folder, if they validate
-  4. starts `supervisor-stats`
+  4. starts `supervisor-stats`, and `frigate-targets` when Frigate metrics are on without a Frigate address
   5. runs Alloy
 - [`supervisor-stats`](alloy_collector/rootfs/usr/local/bin/supervisor-stats) polls the Supervisor's stats API for every container. It writes the stats as Prometheus metrics for the unix exporter's textfile collector.
+- [`frigate-targets`](alloy_collector/rootfs/usr/local/bin/frigate-targets) asks the Supervisor for running Frigate add-ons and their addresses. It writes them as a target file for Alloy's `discovery.file`, which feeds the Frigate scrape.
 
 ## Tests
 

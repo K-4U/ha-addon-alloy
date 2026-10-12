@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Finds running Frigate add-ons (frigate, frigate-fa, frigate-beta, frigate-fa-beta, from any
+# repository) through the Supervisor, and writes their API addresses as a target file for
+# Alloy's discovery.file. Polls, because Frigate usually starts after this add-on and its
+# address changes when it restarts.
+#
+#   frigate-targets <file> <interval in seconds>
+set -uo pipefail
+
+file="$1"
+interval="$2"
+port=5000 # Frigate's internal API port: no login, reachable from the host network
+
+api() {
+  curl -fsS --max-time 10 -H "Authorization: Bearer ${SUPERVISOR_TOKEN:-}" "http://supervisor$1" | jq -c '.data'
+}
+
+log() { echo "[frigate-targets] $*" >&2; }
+
+previous=""
+while true; do
+  targets=()
+  while read -r slug; do
+    ip="$(api "/addons/$slug/info" 2>/dev/null | jq -r '.ip_address // empty' || true)"
+    if [[ -z "$ip" ]]; then
+      log "Could not read the address of $slug"
+      continue
+    fi
+    # Same container and service labels as the logs and ha_container_* metrics
+    targets+=("$(jq -nc --arg a "$ip:$port" --arg c "app_$slug" \
+      '{targets: [$a], labels: {container: $c, service: ($c | sub("^app_[^_]+_"; ""))}}')")
+  done < <(api /addons 2>/dev/null \
+    | jq -r '.addons[] | select(.state == "started" and (.slug | test("(^|_)frigate(-[a-z-]+)?$"))) | .slug')
+
+  json="$(printf '%s\n' "${targets[@]}" | jq -sc '.')"
+  if [[ "$json" != "$previous" ]]; then
+    if [[ "$json" == "[]" ]]; then
+      log "No running Frigate add-on found; checking again every ${interval}s"
+    else
+      log "Scraping Frigate at $(jq -r '[.[] | "\(.labels.container) (\(.targets[0]))"] | join(", ")' <<<"$json")"
+    fi
+    previous="$json"
+  fi
+
+  # Write atomically, so Alloy never reads a half-written file
+  echo "$json" >"$file.tmp" && mv "$file.tmp" "$file"
+  sleep "$interval"
+done

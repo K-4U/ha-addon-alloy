@@ -9,6 +9,7 @@ Sends Home Assistant's logs and metrics to Loki and Prometheus, using [Grafana A
 | The host journal: Home Assistant, the Supervisor, every add-on and the OS | Loki | `loki_url` |
 | Host metrics (`node_*`): CPU, memory, disks, network of the Home Assistant machine | Prometheus | `prometheus_url`; protection mode off for complete metrics |
 | Container metrics (`ha_container_*`): CPU, memory, network and disk usage of Home Assistant, the Supervisor, its plugins and every started add-on | Prometheus | `prometheus_url` |
+| Frigate metrics (`frigate_*`): camera, detection and skipped FPS, detector speed, CPU, GPU and storage, from [Frigate's metrics endpoint](https://docs.frigate.video/configuration/metrics) | Prometheus | `prometheus_url`; **Collect Frigate metrics** on (off by default) |
 
 ### Protection mode
 
@@ -57,7 +58,8 @@ Stopped add-ons only have `ha_container_info`, with `state="stopped"`.
 - **Username / password**: basic auth, optional.
 - **CA certificate, client certificate, client key**: TLS, optional. Put the files in Home Assistant's `ssl` folder and use paths like `/ssl/ca.pem`.
 - **Skip TLS verification**: accept any certificate. Only for testing.
-- **Collect logs / host metrics / container metrics**: turn each collector on or off.
+- **Collect logs / host metrics / container metrics / Frigate metrics**: turn each collector on or off.
+- **Frigate address**: where to scrape Frigate, as `host:port` (port 5000 when left out), e.g. `192.168.1.30:5000`. Leave empty to find the Frigate add-on on this machine by itself: any of the Frigate add-ons (`frigate`, `frigate-fa`, `frigate-beta`, `frigate-fa-beta`), also when it starts later or gets a new address after a restart. That uses Frigate's internal port 5000, so you don't have to open it in Frigate's network settings. Set the address for a Frigate that runs elsewhere, e.g. in Docker on a NAS; its port 5000 must then be reachable from Home Assistant.
 - **Scrape interval**: how often metrics are collected, in seconds.
 - **Log level**: Alloy's own log level.
 - **Alloy UI port**: exposes Alloy's web UI on that port of the Home Assistant host. It shows every component and its health, which helps with debugging. Leave empty to keep it private.

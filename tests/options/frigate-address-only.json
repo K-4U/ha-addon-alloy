@@ -1,0 +1,10 @@
+{
+  "prometheus_url": "http://10.42.1.2:9090",
+  "collect_logs": false,
+  "collect_host_metrics": false,
+  "collect_container_metrics": false,
+  "collect_frigate_metrics": true,
+  "frigate_address": "192.168.1.30",
+  "scrape_interval": 60,
+  "log_level": "info"
+}
