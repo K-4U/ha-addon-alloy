@@ -1,6 +1,6 @@
 # https://developers.home-assistant.io/docs/apps/configuration
 name: Alloy Collector
-version: "1.6.0"
+version: "1.7.0"
 slug: alloy_collector
 description: Ships Home Assistant logs and metrics to Loki and Prometheus with Grafana Alloy
 url: "https://github.com/K-4U/ha-addon-alloy/tree/main/alloy_collector"
