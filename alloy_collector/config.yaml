@@ -33,6 +33,7 @@ options:
   collect_logs: true
   collect_host_metrics: true
   collect_container_metrics: true
+  collect_frigate_metrics: false
   scrape_interval: 60
   log_level: info
 schema:
@@ -55,6 +56,8 @@ schema:
   collect_logs: bool
   collect_host_metrics: bool
   collect_container_metrics: bool
+  collect_frigate_metrics: bool
+  frigate_address: str?
   scrape_interval: int(10,3600)
   log_level: list(debug|info|warn|error)
   ui_port: port?

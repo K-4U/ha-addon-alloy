@@ -2,7 +2,7 @@
 # Entrypoint of the Alloy Collector add-on.
 #
 #   alloy-collector run    render the Alloy config from the add-on options, start the
-#                          Supervisor stats poller and run Alloy (the default)
+#                          Supervisor stats and Frigate pollers and run Alloy (the default)
 #   alloy-collector check  render and validate the config, then exit (used by CI)
 #
 # Overrides for running outside Home Assistant (CI, local tests):
@@ -17,6 +17,7 @@ EXTRA_DIR="${EXTRA_DIR:-/config}"
 RUN_DIR="/run/alloy-collector"
 CONFIG_DIR="$RUN_DIR/config"
 TEXTFILE_DIR="$RUN_DIR/textfile"
+FRIGATE_TARGETS="$RUN_DIR/frigate-targets.json"
 STORAGE_DIR="/data/alloy"
 
 log() { echo "[alloy-collector] $*" >&2; }
@@ -247,26 +248,7 @@ loki.source.journal "journal" {
 EOF
 }
 
-render_prometheus() {
-  local host_metrics container_metrics
-  host_metrics="$(opt collect_host_metrics)"
-  container_metrics="$(opt collect_container_metrics)"
-
-  cat <<'EOF'
-// ---------- Metrics ----------
-
-// Metrics -> Prometheus. Extra .alloy files can send to prometheus.remote_write.default.receiver too.
-prometheus.remote_write "default" {
-EOF
-  endpoint prometheus
-  external_labels
-  echo "}"
-  echo
-
-  if [[ "$host_metrics" != true && "$container_metrics" != true ]]; then
-    return
-  fi
-
+render_host_metrics() {
   echo "// Host metrics (node_*) and, via the textfile collector, per-container stats (ha_container_*)"
   echo 'prometheus.exporter.unix "host" {'
   if [[ "$host_metrics" == true ]] && host_access; then
@@ -290,6 +272,87 @@ prometheus.scrape "host" {
   forward_to      = [prometheus.relabel.instance.receiver]
 }
 
+EOF
+}
+
+# Frigate address from the frigate_address option: host or host:port, port 5000 by default
+frigate_address() {
+  local address
+  address="$(opt frigate_address)"
+  address="${address#*://}"
+  address="${address%%/*}"
+  if [[ -n "$address" && "$address" != *:* ]]; then
+    address="$address:5000"
+  fi
+  echo "$address"
+}
+
+render_frigate() {
+  local address
+  address="$(frigate_address)"
+
+  echo "// Frigate's Prometheus metrics (frigate_*)"
+  if [[ -n "$address" ]]; then
+    echo "// at the frigate_address option"
+    cat <<EOF
+prometheus.scrape "frigate" {
+  targets         = [{__address__ = $(str "$address"), service = "frigate"}]
+  job_name        = "frigate"
+  metrics_path    = "/api/metrics"
+  scrape_interval = $(str "$(opt scrape_interval)s")
+  forward_to      = [prometheus.relabel.instance.receiver]
+}
+
+EOF
+  else
+    cat <<EOF
+// from every running Frigate add-on, found by frigate-targets
+discovery.file "frigate" {
+  files            = [$(str "$FRIGATE_TARGETS")]
+  refresh_interval = $(str "$(opt scrape_interval)s")
+}
+
+prometheus.scrape "frigate" {
+  targets         = discovery.file.frigate.targets
+  job_name        = "frigate"
+  metrics_path    = "/api/metrics"
+  scrape_interval = $(str "$(opt scrape_interval)s")
+  forward_to      = [prometheus.relabel.instance.receiver]
+}
+
+EOF
+  fi
+}
+
+render_prometheus() {
+  local host_metrics container_metrics frigate_metrics
+  host_metrics="$(opt collect_host_metrics)"
+  container_metrics="$(opt collect_container_metrics)"
+  frigate_metrics="$(opt collect_frigate_metrics)"
+
+  cat <<'EOF'
+// ---------- Metrics ----------
+
+// Metrics -> Prometheus. Extra .alloy files can send to prometheus.remote_write.default.receiver too.
+prometheus.remote_write "default" {
+EOF
+  endpoint prometheus
+  external_labels
+  echo "}"
+  echo
+
+  if [[ "$host_metrics" != true && "$container_metrics" != true && "$frigate_metrics" != true ]]; then
+    return
+  fi
+
+  if [[ "$host_metrics" == true || "$container_metrics" == true ]]; then
+    render_host_metrics
+  fi
+  if [[ "$frigate_metrics" == true ]]; then
+    render_frigate
+  fi
+
+  cat <<EOF
 // instance = the host name instead of Alloy's own address
 prometheus.relabel "instance" {
   forward_to = [prometheus.remote_write.default.receiver]
@@ -314,7 +377,7 @@ render() {
   if [[ "$(opt collect_logs)" == true && -z "$(opt loki_url)" ]]; then
     log "collect_logs is on, but loki_url is empty: not collecting logs."
   fi
-  if [[ "$(opt collect_host_metrics)$(opt collect_container_metrics)" == *true* && -z "$(opt prometheus_url)" ]]; then
+  if [[ "$(opt collect_host_metrics)$(opt collect_container_metrics)$(opt collect_frigate_metrics)" == *true* && -z "$(opt prometheus_url)" ]]; then
     log "Metrics collection is on, but prometheus_url is empty: not collecting metrics."
   fi
   if [[ "$(opt collect_host_metrics)" == true && -n "$(opt prometheus_url)" ]] && ! host_access; then
@@ -395,6 +458,14 @@ run() {
   if [[ -n "$(opt prometheus_url)" && "$(opt collect_container_metrics)" == true ]]; then
     mkdir -p "$TEXTFILE_DIR"
     supervisor-stats "$TEXTFILE_DIR" "$(opt scrape_interval)" &
+  fi
+  if [[ -n "$(opt prometheus_url)" && "$(opt collect_frigate_metrics)" == true ]]; then
+    if [[ -n "$(frigate_address)" ]]; then
+      log "Scraping Frigate at $(frigate_address)"
+    else
+      echo "[]" >"$FRIGATE_TARGETS"
+      frigate-targets "$FRIGATE_TARGETS" "$(opt scrape_interval)" &
+    fi
   fi
 
   local listen="127.0.0.1:12345"
