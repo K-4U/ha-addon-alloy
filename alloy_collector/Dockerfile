@@ -1,5 +1,5 @@
 # Dependabot bumps this line; a changed Alloy version triggers an automatic release
-FROM grafana/alloy:v1.20.1
+FROM grafana/alloy:v1.21.0
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl jq \
